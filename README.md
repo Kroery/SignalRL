@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 > **基于信号传播理论的长程多轮智能体强化学习优化**  
-> 在 PRM-Lite + LATA 基础上提出 **PRM Annealing + Difficulty-Aware Sampling + 两阶段课程 RL**，  
+> 在已有开源项目 PRM-Lite + LATA 基础上提出 **PRM Annealing + Difficulty-Aware Sampling + 两阶段课程 RL**，  
 > 于 τ-bench airline（50 任务、多轮工具调用）场景中提升训练效率与泛化能力。
 
 ---
