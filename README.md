@@ -6,7 +6,27 @@
 
 > **基于信号传播理论的长程多轮智能体强化学习优化**  
 > 在 PRM-Lite + LATA 基础上提出 **PRM Annealing + Difficulty-Aware Sampling + 两阶段课程 RL**，  
-> 于 τ-bench airline（50 任务、多轮工具调用）场景中提升训练效率与泛化能力。
+> 于 τ-bench airline（50 任务、多轮工具调用）场景中显著提升整体任务完成率。
+
+---
+
+## Motivation
+
+[Agentic-GRPO-LongHorizon](https://github.com/qiqihezh/agentic-grpo-longhorizon) 通过 PRM-Lite + LATA 解决了长链路 GRPO 的信号生成和信号传输问题，但仍存在三个性能瓶颈：
+
+**1. 过程信号权重固定，性能存在天花板**
+
+PRM-Lite 在训练全程使用恒定的 process_coeff。训练前期信号不够强，模型纠错慢；训练后期信号过强，过程奖励的固定规则反而限制策略发现更优解法，整体 pass rate 增长停滞。
+
+**2. 均匀采样浪费训练资源**
+
+50 个 task 难度差异巨大（pass rate 从 0% 到 100%）。均匀采样下，简单任务的 rollout 全部成功 → group 内 advantage 归零 → 梯度贡献为 0；困难任务采样不足，模型始终学不会。大量算力消耗在已经掌握的任务上。
+
+**3. 训练阶段切换引发 distribution shift**
+
+从简单任务子集直接跳到全量任务训练时，难度分布突变导致策略震荡，已习得的能力出现退化。
+
+**SignalRL** 在信号传播理论框架下针对这三个瓶颈分别提出解法，将整体 pass^1 进一步大幅提升。
 
 ---
 
