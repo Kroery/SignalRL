@@ -1,0 +1,25 @@
+#!/bin/bash
+set -e
+
+source /home/system/anaconda3/etc/profile.d/conda.sh
+conda activate lwy-agentrl
+
+export SWANLAB_API_KEY="XeTJV7RH7OOkR9fGJAyBl"
+export CUDA_HOME=/usr/local/cuda-12.4
+export TRITON_PTXAS_PATH=/usr/local/cuda-12.4/bin/ptxas
+export CUDA_VISIBLE_DEVICES=0
+export DS_SKIP_TRITON=1
+export RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
+export VLLM_USE_V1=1
+export HF_HUB_OFFLINE=1
+export OPENAI_API_KEY=dummy
+export LITELLM_LOCAL_MODEL_COST_MAP="True"
+export TRANSFORMERS_NO_ADVISORY_WARNINGS=1
+export VLLM_LOGGING_LEVEL=ERROR
+
+cd /mnt/data/lwy/code/agentic-grpo-longhorizon-main/agentic-grpo-longhorizon
+mkdir -p experiments/prm_lite_lata_v4c_ph2_da
+
+python -m verl.trainer.main_ppo \
+    --config-path=$(pwd)/configs/train/grpo \
+    --config-name=prm_lite_lata_ph2.yaml 2>&1 | tee experiments/prm_lite_lata_v4c_ph2_da/training.log

@@ -1,0 +1,108 @@
+# Phase 2: PRM-Lite + LATA + Difficulty-Aware Sampling + PRM Annealing
+# 基于 Phase 1 (step 150) 训练结果，使用难度感知采样继续训练
+# 改进：
+#   1. 难度感知采样：模型做不好的 task 被更频繁采样
+#   2. PRM Annealing：process_coeff 从 2.0 线性衰减到 0.5，后期 outcome 主导泛化
+#   3. Ref 模型保持原始 SFT，提供稳定的分布锚点
+hydra:
+  searchpath:
+    - pkg://verl/trainer/config
+
+defaults:
+  - ppo_trainer
+  - _self_
+
+data:
+  train_files: experiments/curriculum/train_difficulty_aware.parquet
+  val_files: experiments/vanilla/val.parquet
+  train_batch_size: 2
+  max_prompt_length: 8192
+  max_response_length: 8192
+  return_raw_chat: True
+  tool_config_path: configs/tool_config/tau_bench_airline_tools.yaml
+
+actor_rollout_ref:
+  model:
+    path: experiments/prm_lite_lata_v4c/checkpoints/global_step_150/actor/merged
+    enable_gradient_checkpointing: true
+    lora_rank: 16
+    lora_alpha: 32
+    use_fused_kernels: true
+    fused_kernel_options:
+      impl_backend: torch
+    override_config:
+      attn_implementation: flash_attention_2
+  actor:
+    fsdp_config:
+      optimizer_offload: true
+      param_offload: true
+      model_dtype: bf16
+    optim:
+      lr: 3.0e-5
+    use_kl_loss: False
+    kl_loss_coef: 0.0
+    kl_loss_type: low_var_kl
+    use_fused_kernels: true
+    ppo_mini_batch_size: 2
+    ppo_micro_batch_size_per_gpu: 1
+  rollout:
+    name: "vllm"
+    mode: async
+    agent:
+      default_agent_loop: tool_agent
+    multi_turn:
+      enable: True
+      format: "hermes"
+      max_user_turns: 10
+      max_assistant_turns: 10
+      tool_config_path: configs/tool_config/tau_bench_airline_tools.yaml
+      interaction_config_path: configs/interaction_config/tau_bench_airline_prm_lite.yaml
+    n: 8
+    temperature: 0.8
+    top_p: 0.9
+    tensor_model_parallel_size: 1
+    calculate_log_probs: true
+    gpu_memory_utilization: 0.5
+    free_cache_engine: true
+    max_num_seqs: 2
+    max_model_len: 12288
+    max_num_batched_tokens: 12288
+    log_prob_micro_batch_size_per_gpu: 1
+    val_kwargs:
+      n: 1
+      temperature: 0.7
+      top_p: 0.9
+  ref:
+    fsdp_config:
+      optimizer_offload: true
+      param_offload: true
+      use_fused_kernels: true
+      model_dtype: bf16
+    model:
+      path: experiments/sft_lora_merged
+      override_config:
+        attn_implementation: flash_attention_2
+    log_prob_micro_batch_size_per_gpu: 1
+
+algorithm:
+  adv_estimator: grpo_lata
+  norm_adv_by_std_in_grpo: true
+  kl_ctrl:
+    kl_coef: 0.001
+  rollout_correction:
+    bypass_mode: true
+  turn_discount:
+    enable: true
+    alpha: 1.05
+
+trainer:
+  total_epochs: 50
+  total_training_steps: 300
+  save_freq: 50
+  test_freq: 50
+  default_local_dir: experiments/prm_lite_lata_v4c_ph2_da/checkpoints
+  logger: ['console', 'swanlab']
+  project_name: agentic-grpo-longhorizon
+  experiment_name: prm_lite_lata_phase2_difficulty_aware
+  n_gpus_per_node: 1
+  nnodes: 1
