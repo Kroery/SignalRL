@@ -120,10 +120,11 @@ cd agentic-grpo-longhorizon
 - 上下文超过 35000 字符（截断污染）的 trajectory 永久排除
 
 **数据划分：**
-- 50 个 task 中，手动选取 40 个作为 seen task（训练集），10 个作为 unseen task（holdout 评测集）
-- 72B 模型在 50 个 task 上共采集到约 80 条成功轨迹（多数 task 成功率很低，仅约一半 task 能产出成功数据）
-- 最终 40 个 seen task 产出 **45 条**成功轨迹用于 SFT 训练
-- 10 个 unseen task 产出 22 条轨迹保留为 holdout
+- 50 个 task 中，19 个至少有一条成功 trajectory（覆盖率 38%），共采集到 **67 条**成功轨迹
+- 手动选取 10 个 task 作为 unseen task（holdout），剩余 40 个为 seen task
+- Seen task 上的 **45 条**成功轨迹写入 `train.jsonl`，用于 SFT 训练
+- Unseen task 上的 **22 条**成功轨迹写入 `holdout_train.jsonl`，**不参与训练**
+- Holdout 的目的：保留一组模型"没见过的 task"，用来评估 GRPO 训练后模型的泛化能力——如果模型在 unseen task 上也能表现好，说明学到了通用的 agent 能力，而不是过拟合到具体 task
 
 ```bash
 # 启动 72B 模型 vLLM 服务（GPU0 作为 policy，GPU1 作为 user simulator）
