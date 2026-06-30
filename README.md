@@ -157,24 +157,37 @@ python scripts/train/sft/merge_lora.py \
     --out experiments/sft_lora_merged
 ```
 
-### Step 3: Phase 1 GRPO 训练
+### Step 3: Phase 1 GRPO 训练（简单任务课程学习）
 
-生成训练数据（40 个 seen task 用于训练，全部 50 个 task 用于验证）：
+从 SFT 数据采集阶段的成功率中筛选**简单任务**用于 Phase 1 课程学习。我们选取 72B 模型成功率 ≥ 25%（≥ 4/16）的 seen task 作为简单任务子集，共 7 个 task：
+
+| Task ID | 72B 成功率 |
+|---------|-----------|
+| 38 | 9/16 (56%) |
+| 21 | 8/16 (50%) |
+| 40 | 6/16 (38%) |
+| 34 | 6/16 (38%) |
+| 47 | 5/16 (31%) |
+| 44 | 4/16 (25%) |
+| 37 | 4/16 (25%) |
+
+生成简单任务训练数据：
 
 ```bash
-python scripts/train/grpo/build_grpo_parquet.py \
-    --seen-task-ids-from experiments/sft_collect_airline/split.json \
-    --output-train experiments/vanilla/train.parquet \
-    --output-val experiments/vanilla/val.parquet
+python scripts/train/grpo/build_curriculum_parquet.py \
+    --easy-task-ids 38,21,40,34,47,44,37 \
+    --output experiments/curriculum/train_easy.parquet
 ```
 
-从 SFT checkpoint 启动，使用过程奖励 + 长度感知 advantage 进行 GRPO 训练（40 个 seen task，每个 task 采样 8 条 rollout）：
+从 SFT checkpoint 启动 Phase 1 训练（仅在简单任务上训练，使用过程奖励 + 长度感知 advantage）：
 
 ```bash
 python -m verl.trainer.main_ppo \
     --config-path=$(pwd)/configs/train/grpo \
     --config-name=prm_lite_lata.yaml
 ```
+
+> Phase 1 的目标：在简单任务上快速建立基础的工具调用和多轮对话能力，为 Phase 2 的全量任务训练提供一个好的起点。
 
 ### Step 4: Phase 1 评测 & 难度感知数据生成
 
