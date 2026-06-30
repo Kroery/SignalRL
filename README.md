@@ -4,8 +4,8 @@
 [![PyTorch 2.7](https://img.shields.io/badge/PyTorch-2.7-red.svg)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **使用 7B 小模型实现长程多轮智能体工具调用任务的强化学习框架**  
-> 提出信号传播理论，系统解决小模型在长 horizon agent RL 中信号稀疏、衰减和分配不均的问题，  
+> **使用 7B 模型实现长程多轮智能体工具调用任务的强化学习框架**  
+> 提出信号传播理论，系统解决7B模型在长 horizon agent RL 中信号稀疏、衰减和分配不均的问题，  
 > 于 τ-bench airline（50 任务、多轮工具调用）场景中大幅提升任务完成率。
 
 ---
@@ -96,7 +96,11 @@ weight_i = (1 - reward_i + ε)^(1/τ)    ε=0.1, τ=0.8
 
 ## 实验结果
 
-<!-- TODO: 填写你的实验结果 -->
+| Metric | Vanilla GRPO | + 过程奖励 | + 长度归一化 | + 课程学习 | **+ PRM Annealing + 难度采样** | Δ vs Vanilla |
+|--------|-------------|-----------|------------|-----------|-------------------------------|-------------|
+| **Overall pass^1** | 0.175 | 0.140 | 0.185 | 0.240 | **TBD** | **TBD** |
+| **Generalization** | 0.071 | 0.059 | 0.088 | 0.110 | **TBD** | **TBD** |
+| **Error Rate** | 0.200 | 0.365 | 0.290 | 0.140 | **TBD** | **TBD** |
 
 ---
 
