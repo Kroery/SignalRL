@@ -110,30 +110,37 @@ conda activate agentrl
 cd agentic-grpo-longhorizon
 ```
 
-### Step 1: SFT 数据筛选
+### Step 1: SFT 数据采集与筛选
 
-使用 72B 大模型（Qwen2.5-72B-Instruct-AWQ）作为 policy 在 τ-bench 上采集成功 trajectory，筛选出可用于 SFT 的高质量数据。
+使用 Qwen2.5-72B-Instruct-AWQ 作为 policy 在 τ-bench airline 50 个任务上采集成功 trajectory，筛选出高质量 SFT 训练数据。
 
-**筛选规则：**
-- 每个 task 采用 best-of-16 采样（分层温度：0.0×4, 0.5×4, 0.8×4, 1.0×4）
+**采集策略：**
+- 每个 task 采用 best-of-16 采样，分层温度（0.0×4, 0.5×4, 0.8×4, 1.0×4）
 - 仅保留 `success=True` 的 trajectory
 - 上下文超过 35000 字符（截断污染）的 trajectory 永久排除
-- 40 个 seen task 用于训练，10 个 unseen task 留作评测
+
+**数据划分：**
+- 50 个 task 中，手动选取 40 个作为 seen task（训练集），10 个作为 unseen task（holdout 评测集）
+- 72B 模型在 50 个 task 上共采集到约 80 条成功轨迹（多数 task 成功率很低，仅约一半 task 能产出成功数据）
+- 最终 40 个 seen task 产出 **45 条**成功轨迹用于 SFT 训练
+- 10 个 unseen task 产出 22 条轨迹保留为 holdout
 
 ```bash
-# 启动 72B 模型 vLLM 服务
+# 启动 72B 模型 vLLM 服务（GPU0 作为 policy，GPU1 作为 user simulator）
 bash scripts/vllm_server/72b.sh
 
-# 采集 SFT 数据
+# 采集并筛选 SFT 数据
 python scripts/train/sft/collect_sft_data.py \
     --config configs/train/sft/sft_collect_airline.yaml
 ```
 
-输出：`experiments/sft_collect_airline/train.jsonl`
+输出：
+- `experiments/sft_collect_airline/train.jsonl`（45 条 seen task 成功轨迹）
+- `experiments/sft_collect_airline/split.json`（seen/unseen task 划分）
 
 ### Step 2: SFT 训练
 
-基于 Qwen2.5-7B-Instruct 进行 LoRA SFT：
+基于 Qwen2.5-7B-Instruct 进行 LoRA 微调（r=16, α=32），使用 45 条成功轨迹作为监督数据：
 
 ```bash
 python scripts/train/sft/sft_train.py \
@@ -149,9 +156,9 @@ python scripts/train/sft/merge_lora.py \
     --out experiments/sft_lora_merged
 ```
 
-### Step 3: Phase 1 训练数据生成 & 训练
+### Step 3: Phase 1 GRPO 训练
 
-生成 GRPO 训练数据（parquet 格式）：
+生成训练数据（40 个 seen task 用于训练，全部 50 个 task 用于验证）：
 
 ```bash
 python scripts/train/grpo/build_grpo_parquet.py \
@@ -160,7 +167,7 @@ python scripts/train/grpo/build_grpo_parquet.py \
     --output-val experiments/vanilla/val.parquet
 ```
 
-启动 Phase 1 训练：
+从 SFT checkpoint 启动，使用过程奖励 + 长度感知 advantage 进行 GRPO 训练（40 个 seen task，每个 task 采样 8 条 rollout）：
 
 ```bash
 python -m verl.trainer.main_ppo \
@@ -176,7 +183,7 @@ python -m verl.trainer.main_ppo \
 bash scripts/eval/eval_phase1.sh 150
 ```
 
-基于评测结果生成难度加权训练数据：
+基于评测结果生成难度加权训练数据（困难任务获得更高采样权重）：
 
 ```bash
 python scripts/train/grpo/build_difficulty_aware_parquet.py \
@@ -185,9 +192,9 @@ python scripts/train/grpo/build_difficulty_aware_parquet.py \
     --output experiments/curriculum/train_difficulty_aware.parquet
 ```
 
-### Step 5: Phase 2 训练（难度感知 + PRM Annealing）
+### Step 5: Phase 2 GRPO 训练（难度感知 + PRM Annealing）
 
-从 Phase 1 最佳 checkpoint 热启动，使用难度加权数据进行第二阶段训练：
+从 Phase 1 step 150 checkpoint 热启动，使用难度加权数据 + 过程奖励退火继续训练（Ref 模型锚定原始 SFT）：
 
 ```bash
 python -m verl.trainer.main_ppo \
