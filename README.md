@@ -110,29 +110,95 @@ conda activate agentrl
 cd agentic-grpo-longhorizon
 ```
 
-### Phase 1 训练（简单任务课程学习）
+### Step 1: SFT 数据筛选
+
+使用 72B 大模型（Qwen2.5-72B-Instruct-AWQ）作为 policy 在 τ-bench 上采集成功 trajectory，筛选出可用于 SFT 的高质量数据。
+
+**筛选规则：**
+- 每个 task 采用 best-of-16 采样（分层温度：0.0×4, 0.5×4, 0.8×4, 1.0×4）
+- 仅保留 `success=True` 的 trajectory
+- 上下文超过 35000 字符（截断污染）的 trajectory 永久排除
+- 40 个 seen task 用于训练，10 个 unseen task 留作评测
 
 ```bash
-bash scripts/train/grpo/run_exp4_prm_lite_lata.sh
+# 启动 72B 模型 vLLM 服务
+bash scripts/vllm_server/72b.sh
+
+# 采集 SFT 数据
+python scripts/train/sft/collect_sft_data.py \
+    --config configs/train/sft/sft_collect_airline.yaml
 ```
 
-### Phase 1 评测 & 生成难度感知数据
+输出：`experiments/sft_collect_airline/train.jsonl`
+
+### Step 2: SFT 训练
+
+基于 Qwen2.5-7B-Instruct 进行 LoRA SFT：
+
+```bash
+python scripts/train/sft/sft_train.py \
+    --config configs/train/sft/sft_airline_lora.yaml
+```
+
+训练完成后合并 LoRA 权重：
+
+```bash
+python scripts/train/sft/merge_lora.py \
+    --base <path-to-Qwen2.5-7B-Instruct> \
+    --adapter experiments/sft_lora \
+    --out experiments/sft_lora_merged
+```
+
+### Step 3: Phase 1 训练数据生成 & 训练
+
+生成 GRPO 训练数据（parquet 格式）：
+
+```bash
+python scripts/train/grpo/build_grpo_parquet.py \
+    --seen-task-ids-from experiments/sft_collect_airline/split.json \
+    --output-train experiments/vanilla/train.parquet \
+    --output-val experiments/vanilla/val.parquet
+```
+
+启动 Phase 1 训练：
+
+```bash
+python -m verl.trainer.main_ppo \
+    --config-path=$(pwd)/configs/train/grpo \
+    --config-name=prm_lite_lata.yaml
+```
+
+### Step 4: Phase 1 评测 & 难度感知数据生成
+
+评测 Phase 1 最佳 checkpoint（step 150），获取每个 task 的 pass rate 作为难度指标：
 
 ```bash
 bash scripts/eval/eval_phase1.sh 150
+```
 
+基于评测结果生成难度加权训练数据：
+
+```bash
 python scripts/train/grpo/build_difficulty_aware_parquet.py \
     --from-eval-report experiments/prm_lite_lata_v4c/eval_step_150/eval_report.json \
     --all-tasks --repeat-factor 3 --temperature 0.8 \
     --output experiments/curriculum/train_difficulty_aware.parquet
 ```
 
-### Phase 2 训练（难度感知 + PRM Annealing）
+### Step 5: Phase 2 训练（难度感知 + PRM Annealing）
+
+从 Phase 1 最佳 checkpoint 热启动，使用难度加权数据进行第二阶段训练：
 
 ```bash
 python -m verl.trainer.main_ppo \
-    --config-path configs/train/grpo \
-    --config-name prm_lite_lata_ph2
+    --config-path=$(pwd)/configs/train/grpo \
+    --config-name=prm_lite_lata_ph2.yaml
+```
+
+### Step 6: 最终评测
+
+```bash
+bash scripts/eval/eval_exp4_prm_lite_lata.sh
 ```
 
 ---
